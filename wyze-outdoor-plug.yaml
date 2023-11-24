@@ -1,0 +1,221 @@
+substitutions:
+  # Higher value gives lower watt readout
+  current_res: "0.001"
+  # Lower value gives lower voltage readout
+  voltage_div: "770"
+
+esphome:
+  name: wyze-outdoor-plug
+  friendly_name: Wyze Outdoor Plug
+  name_add_mac_suffix: true
+  # configuration and updates.
+  project:
+    name: esphome.wyze-outdoor-plug
+    version: "1.0"
+
+esp32:
+  board: esp-wrover-kit
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+# OTA is required for Over-the-Air updating
+ota:
+
+# Public Location of YAML
+dashboard_import:
+  package_import_url: github://esphome/esphome-project-template/project-template-esp32.yaml@v6
+  import_full_config: true
+
+wifi:
+  # Set up a wifi access point
+  ap:
+
+# In combination with the `ap` this allows the user
+# to provision wifi credentials to the device.
+captive_portal:
+
+switch:
+  # Add Restart Switch
+  - platform: restart
+    name: Restart
+
+  # Setup Relay Switch
+  - platform: gpio
+    name: Relay1
+    pin:
+      number: GPIO15
+      inverted: false
+    id: relay1
+    on_turn_on:
+      - light.turn_on: relay1_led
+    on_turn_off:
+      - light.turn_off: relay1_led
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: mdi:power-socket-us
+  - platform: gpio
+    name: Relay2
+    pin:
+      number: GPIO32
+      inverted: false
+    id: relay2
+    on_turn_on:
+      - light.turn_on: relay2_led
+    on_turn_off:
+      - light.turn_off: relay2_led
+    restore_mode: RESTORE_DEFAULT_OFF
+    icon: mdi:power-socket-us
+
+
+binary_sensor:
+  # Setup Buttons on Outlet
+  - platform: gpio
+    internal: true
+    pin:
+      number: GPIO18
+      mode: INPUT_PULLDOWN
+      inverted: True
+    name: Button1
+    disabled_by_default: True
+    on_press:
+      - switch.toggle: relay1
+  - platform: gpio
+    internal: true
+    pin:
+      number: GPIO17
+      mode: INPUT_PULLDOWN
+      inverted: True
+    name: Button2
+    disabled_by_default: True
+    on_press:
+      - switch.toggle: relay2
+
+  # Template for Daylight Sensor
+  - platform: template
+    name: Daylight
+    device_class: light
+    lambda: |-
+        // the senor reads 3.1 volts if there is light and 0.5 if there is not light not much inbetween
+        if (id(lux_sensor).state > 2) {
+          // there is daylight outside.
+          return true;
+        } else {
+          // there is no daylight outside (e.g. it is dark).
+          return false;
+        }
+
+sensor:
+  # Add Wifi Signal and Uptime Tracking
+  - platform: wifi_signal
+    name: Wifi Signal
+    update_interval: 60s
+
+  # Uptime Sensor
+  - platform: uptime
+    name: Uptime
+
+  # Lux Sensor Setup
+  - platform: adc
+    pin: GPIO34
+    name: Lux
+    id: lux_sensor
+    device_class: illuminance
+    unit_of_measurement: lx
+    attenuation: 11db
+
+  # Power Monitoring Sensor Setup
+  - platform: hlw8012
+    sel_pin:
+      number: GPIO25
+      inverted: true
+    cf_pin: GPIO27
+    cf1_pin: GPIO26
+    current_resistor: ${current_res}
+    voltage_divider: ${voltage_div}
+    change_mode_every: 3
+    update_interval: 3s
+    current:
+      name: Current
+      unit_of_measurement: A
+      accuracy_decimals: 2
+    voltage:
+      name: Voltage
+      unit_of_measurement: V
+      accuracy_decimals: 1
+    power:
+      name: Power
+      unit_of_measurement: W
+      accuracy_decimals: 1
+      id: my_power
+      filters:
+        - calibrate_linear:
+            - 0.0 -> 0.0
+            - 134 -> 58
+  - platform: total_daily_energy
+    name: Energy
+    power_id: my_power
+
+# Time Required for Daily Energy Monitoring
+time:
+  - platform: homeassistant
+    id: my_time
+
+# Setup LEDs (solid = connected, flashing = no API)
+light:  
+  - platform: binary
+    name: "Blue LED"
+    output: blue_led
+    id: wifi_status
+    internal: true
+  - platform: binary
+    name: "Relay1 LED"
+    id: relay1_led
+    internal: true
+    output: relay1_led_gpio
+  - platform: binary
+    name: "Relay2 LED"
+    id: relay2_led
+    internal: true
+    output: relay2_led_gpio
+
+output:
+  - id: blue_led
+    platform: gpio
+    pin: GPIO5
+    inverted: true
+  - platform: gpio
+    pin: GPIO19
+    inverted: True
+    id: relay1_led_gpio
+  - platform: gpio
+    pin: GPIO16
+    inverted: True
+    id: relay2_led_gpio
+
+interval:
+  - interval: 1s
+    then:
+      if:
+        condition:
+          wifi.connected:
+        then:
+          - if:
+              condition:
+                api.connected:
+              then:
+                - if:
+                    condition:
+                      light.is_on: wifi_status
+                    then:
+#                     do nothing
+                    else:
+                      - light.turn_on: wifi_status
+              else:
+                - light.turn_on: wifi_status
+                - delay: 500ms
+                - light.turn_off: wifi_status
+        else:
+          - light.turn_off: wifi_status
