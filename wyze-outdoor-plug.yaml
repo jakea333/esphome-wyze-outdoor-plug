@@ -27,7 +27,7 @@ ota:
 
 # Public Location of YAML
 dashboard_import:
-  package_import_url: github://esphome/esphome-project-template/project-template-esp32.yaml@v6
+  package_import_url: github://jakea333/esphome-wyze-outdoor-plug/blob/958c242f5352234cfae716cc9d3939503a2d2fa5/wyze-outdoor-plug.yaml@main
   import_full_config: true
 
 wifi:
